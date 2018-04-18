@@ -21,31 +21,29 @@ def nearestCentroid(datum, centroids):
     dist = np.linalg.norm(centroids - datum, axis=1)
     return np.argmin(dist), np.min(dist)
 
-def nearestCentroid_batched(partitioned, data, centroids,variation,c, cluster_sizes):
+def nearestCentroid_batched(lock,partitioned, data, centroids,variation,c, cluster_sizes):
     for i in partitioned:
         cluster, dist = nearestCentroid(data[i], centroids)
         c[i] = cluster
-        cluster_sizes[cluster] += 1
-        variation[cluster] += dist**2
-    print "done with",partitioned[0]
+        with lock:                
+            cluster_sizes[cluster] += 1
+            variation[cluster] += dist**2
     return
 
 def kmeans_parallel(k, data, nr_iter = 100):
     N = len(data)
-
+    lock = mp.Lock()
     # Choose k random data points as centroids
     centroids = data[np.random.choice(np.array(range(N)),size=k,replace=False)]
     print "Initial centroids\n", centroids
 
     N = len(data)
     # The cluster index: c[i] = j indicates that i-th datum is in j-th cluster
-    c = mp.Array('i', np.zeros(N, dtype=int))
 
     print "Iteration\tVariation\tDelta Variation"
     total_variation = 0.0
-    nwokkers=8
+    nwokkers=4
     partitioned = np.array_split(range(N), nwokkers)
-    
     for j in range(nr_iter):
         #print "=== Iteration %d ===" % (j+1)
 
@@ -53,11 +51,12 @@ def kmeans_parallel(k, data, nr_iter = 100):
         variation = mp.Array(c_double, k)
         cluster_sizes = mp.Array('i',k)
         workers = []
+        c = mp.Array('i', np.zeros(N, dtype=int))
 
         start_time = time.time()
 
-        for i in range(nwokkers):
-            workers.append(mp.Process(target=nearestCentroid_batched, args=(partitioned[i], data, centroids,variation,c, cluster_sizes)))
+        for z in range(nwokkers):
+            workers.append(mp.Process(target=nearestCentroid_batched, args=(lock,partitioned[z], data, centroids,variation,c, cluster_sizes)))
         for w in workers:
             w.start()
         for w in workers:
@@ -105,7 +104,6 @@ def kmeans(k, data, nr_iter = 100):
         # Assign data points to nearest centroid
         variation = np.zeros(k)
         cluster_sizes = np.zeros(k, dtype=int)       
-        nearestCentroid_batched(range(N),data,centroids,variation,c,cluster_sizes) 
         for i in range(N):
             cluster, dist = nearestCentroid(data[i],centroids)
             c[i] = cluster
@@ -130,7 +128,7 @@ def kmeans(k, data, nr_iter = 100):
     return total_variation, c
 
 if __name__ == "__main__":
-    n_samples = 100000
+    n_samples = 250000
 
     X = generateData(n_samples)
     start_time = time.time()
