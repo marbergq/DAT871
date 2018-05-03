@@ -3,13 +3,17 @@ import numpy as np
 import itertools
 import time
 
-
 class LAB2Statistics(MRJob):
+    def configure_args(self):        
+        super(LAB2Statistics, self).configure_args()
+        self.add_passthru_arg('--group', default=1, help="select group")
 
     def mapper(self, _, line):
-        (_, _, value) = line.split()
-        yield ("value", float(value))
-        # yield (int((float(value)*100) % 10), 1)
+        (_, group, value) = line.split()
+        
+        if int(group) == int(self.options.group):
+            yield ("value", float(value))
+            yield (int((float(value)*100) % 10), 1)
 
     def combiner(self, key, values):
         if key == "value":
@@ -17,6 +21,8 @@ class LAB2Statistics(MRJob):
             yield ("max", max(listValue))
             yield ("min", min(listValue))
             yield ("values", listValue)
+        else:
+            yield (key, sum(values))
 
     def reducer(self, key, values):
         if key == "max":
@@ -28,9 +34,12 @@ class LAB2Statistics(MRJob):
             yield ("std", np.std(listValues))
             yield ("median", np.median(listValues))
             yield ("mean", np.mean(listValues))
+        else:
+            yield (key, sum(values))
 
 
 if __name__ == '__main__':
     start_time = time.time()
     LAB2Statistics.run()
     # print "Runtime : ", time.time()-start_time
+
