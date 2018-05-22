@@ -1,5 +1,6 @@
 import random
 from pyspark import SparkContext
+import math
 sc = SparkContext()
 nr_bins = 10
 v_min = 0.0
@@ -22,18 +23,31 @@ def mapper(value):
 
 
 def combiner(v1, v2):
-    return (v1[0]+v2[0], v1[1]+v2[1], v1[2]+v2[2], min(v1[3], v2[3]), max(v1[3], v2[3]))
-
-def mapAgain(v):
-    print("key:",v[0], "value", v[1])
-    return v[0], v[1]
+    # print(v1, v2)
+    return (v1[0]+v2[0], v1[1]+v2[1], v1[2]+v2[2], min(v1[3], v2[3]), max(v1[4], v2[4]))
 
 
-result = sc.textFile("test.data") \
+def finalReducer(v1, v2):
+    return (v1[0]+v2[0], v1[1]+v2[1], v1[2]+v2[2], min(v1[3], v2[3]), max(v1[4], v2[4]), v1[5]+v2[5])
+
+
+def finalMap(v):
+    bin, stats = v[0:]
+    return stats+([(bin, stats[0])],)
+
+
+n, mean, stddev, total_min, total_max, hist = sc.textFile("test.data") \
     .map(mapper) \
     .reduceByKey(combiner) \
-    .map(mapAgain) \
-    .reduceByKey(combiner) \
-    .collect()
+    .map(finalMap) \
+    .reduce(finalReducer)
 
-print("contents ", result)
+mean = (mean/n)
+stddev = math.sqrt(stddev / n - mean**2)
+
+print("n", n)
+print("mean", mean/n)
+print("stddev", stddev)
+print("min", total_min)
+print("max", total_max)
+print("hist", sorted(hist))
